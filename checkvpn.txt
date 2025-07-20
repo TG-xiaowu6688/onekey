@@ -1,0 +1,34 @@
+#!/bin/bash
+echo "============================"
+echo "📥 当前拨入 L2TP 客户端连接"
+echo "============================"
+last | grep ppp
+
+echo
+echo "============================"
+echo "📤 当前拨出 L2TP 通道状态"
+echo "============================"
+ip -o link show | grep ppp
+
+echo
+echo "============================"
+echo "🧭 策略路由规则（fwmark/IP）"
+echo "============================"
+ip rule show | grep -E 'from|fwmark' | sort -n
+
+echo
+echo "============================"
+echo "📌 路由表默认网关绑定"
+echo "============================"
+for i in $(seq 101 110); do
+  tbl=$(awk -v n="$i" '$1==n {print $2}' /etc/iproute2/rt_tables)
+  [[ -z "$tbl" ]] && continue
+  route=$(ip route show table "$i" | grep default || echo "无默认路由")
+  printf "表 %d (%s): %s\n" "$i" "$tbl" "$route"
+done
+
+echo
+echo "============================"
+echo "🧩 拨出通道服务状态"
+echo "============================"
+systemctl list-units --type=service | grep l2tpd-vip
