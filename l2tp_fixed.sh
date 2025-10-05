@@ -243,16 +243,16 @@ yum_start() {
     cp -pf /etc/sysctl.conf /etc/sysctl.conf.bak
     echo "# Added by pptp VPN" >> /etc/sysctl.conf
     echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-    #echo "net.ipv4.tcp_syncookies=1" >> /etc/sysctl.conf
-    #echo "net.ipv4.icmp_echo_ignore_broadcasts=1" >> /etc/sysctl.conf
-    #echo "net.ipv4.icmp_ignore_bogus_error_responses=1" >> /etc/sysctl.conf
+    echo "net.ipv4.tcp_syncookies=1" >> /etc/sysctl.conf
+    echo "net.ipv4.icmp_echo_ignore_broadcasts=1" >> /etc/sysctl.conf
+    echo "net.ipv4.icmp_ignore_bogus_error_responses=1" >> /etc/sysctl.conf
     
-    #for each in `ls /proc/sys/net/ipv4/conf/`; do
-    #    echo "net.ipv4.conf.${each}.accept_source_route=0" >> /etc/sysctl.conf
-    #    echo "net.ipv4.conf.${each}.accept_redirects=0" >> /etc/sysctl.conf
-    #    echo "net.ipv4.conf.${each}.send_redirects=0" >> /etc/sysctl.conf
-    #    echo "net.ipv4.conf.${each}.rp_filter=0" >> /etc/sysctl.conf
-    #done
+    for each in `ls /proc/sys/net/ipv4/conf/`; do
+        echo "net.ipv4.conf.${each}.accept_source_route=0" >> /etc/sysctl.conf
+        echo "net.ipv4.conf.${each}.accept_redirects=0" >> /etc/sysctl.conf
+        echo "net.ipv4.conf.${each}.send_redirects=0" >> /etc/sysctl.conf
+        echo "net.ipv4.conf.${each}.rp_filter=0" >> /etc/sysctl.conf
+    done
     
     nohup sysctl -p >/dev/null 2>&1 &
     sleep 3
@@ -469,12 +469,20 @@ install_l2tp() {
 # Configuration installation function
 config_install() {
     cat > /etc/ipsec.conf<<EOF
+version 2.0
+
 config setup
     protostack=netkey
-    interfaces=%defaultroute
+    nhelpers=0
+    uniqueids=no
+#    interfaces=%defaultroute
     virtual_private=%v4:10.0.0.0/8,%v4:192.168.0.0/16,%v4:172.16.0.0/12,%v4:!${iprange}.0/24
 
 conn l2tp-psk
+    rightsubnet=vhost:%priv
+    also=l2tp-psk-nonat
+
+conn l2tp-psk-nonat
     authby=secret
     pfs=no
     auto=add
@@ -483,8 +491,8 @@ conn l2tp-psk
     ikelifetime=8h
     keylife=1h
     type=transport
-    left=%defaultroute
-    leftid=${IP}
+    left=%any
+#    leftid=${IP}
     leftprotoport=17/1701
     right=%any
     rightprotoport=17/%any
@@ -500,6 +508,8 @@ EOF
 
     cat > /etc/xl2tpd/xl2tpd.conf<<EOF
 [global]
+ipsec saref = yes
+listen-addr = 0.0.0.0
 port = 1701
 
 [lns default]
@@ -518,14 +528,14 @@ EOF
 ipcp-accept-local
 ipcp-accept-remote
 require-mschap-v2
-ms-dns 8.8.8.8
-ms-dns 8.8.4.4
+ms-dns 119.29.29.29
+ms-dns 223.5.5.5
 noccp
 auth
 hide-password
 idle 1800
-mtu 1410
-mru 1410
+mtu 1400
+mru 1400
 nodefaultroute
 debug
 proxyarp
@@ -616,8 +626,6 @@ iptables -F
 iptables -t nat -F
 iptables -P INPUT ACCEPT
 
-iptables -t nat -L -v -n
-
 # Initialize variables
 start_num=2
 rm -f ./l2tp.txt
@@ -700,7 +708,7 @@ ExecStartPre=/bin/sleep 5
 ExecStartPre=/etc/rc.d/init.d/mask.sh
 ExecStart=/bin/bash -c 'iptables-restore < /etc/iptables.up.rules'
 
-User=root
+User=vip
 Type=oneshot
 RemainAfterExit=yes
 Restart=on-failure
@@ -713,10 +721,7 @@ EOF
     fi
     sudo systemctl daemon-reload
     systemctl enable iptables.service
-else
-    systemctl restart iptables
 fi
-iptables -t nat -L -v -n
 
 # Print configuration information
 echo -e "配置文件路径/etc/ppp/chap-secrets，修改此文件可改变帐号密码等信息，修改完成后重启服务生效systemctl restart xl2tpd"
